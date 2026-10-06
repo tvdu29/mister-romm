@@ -1,0 +1,79 @@
+name: release
+
+# Tags (v*) pushed on master are built and published as a GitHub release.
+# "Run workflow" (manual) builds the same files as an artifact, without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: The tag must be on master
+        if: github.ref_type == 'tag'
+        run: |
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::tag $GITHUB_REF_NAME is not on master: nothing was built"
+            exit 1
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Format, vet and test
+        run: |
+          test -z "$(gofmt -l .)" || { echo "::error::gofmt needed on:"; gofmt -l .; exit 1; }
+          go vet ./...
+          go test ./...
+
+      - name: Build for the MiSTer (ARMv7) and for a PC
+        run: |
+          set -euo pipefail
+          VERSION="$GITHUB_REF_NAME"
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then VERSION="dev-$(git rev-parse --short HEAD)"; fi
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          BIN=out/sd/Scripts/.config/romm/bin
+          mkdir -p "$BIN"
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "$BIN/romm-tui" .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o out/romm-tui-linux-amd64 .
+          cp "$BIN/romm-tui" out/romm-tui-linux-armv7
+          cp sdcard/Scripts/romm.sh out/sd/Scripts/romm.sh
+          chmod 755 out/sd/Scripts/romm.sh "$BIN/romm-tui" out/romm-tui-linux-*
+          file out/romm-tui-linux-armv7 | grep -q "ARM" || { echo "::error::the MiSTer binary is not an ARM executable"; exit 1; }
+          (cd out/sd && zip -qr "../mister-romm-${VERSION}-sdcard.zip" .)
+          (cd out && sha256sum "mister-romm-${VERSION}-sdcard.zip" romm-tui-linux-armv7 romm-tui-linux-amd64 > SHA256SUMS)
+          cat out/SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mister-romm-build
+          path: |
+            out/mister-romm-*-sdcard.zip
+            out/romm-tui-linux-armv7
+            out/romm-tui-linux-amd64
+            out/SHA256SUMS
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            out/mister-romm-*-sdcard.zip out/romm-tui-linux-armv7 out/romm-tui-linux-amd64 out/SHA256SUMS \
+            --title "$GITHUB_REF_NAME" --generate-notes

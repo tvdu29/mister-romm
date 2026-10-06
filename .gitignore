@@ -1,0 +1,15 @@
+# Build output
+/out/
+/mister-romm
+/romm-tui*
+*.test
+*.prof
+
+# Runtime data: NEVER commit these (the config holds the access token, games are copyrighted)
+/Scripts/
+/games/
+config.ini
+last-error.log
+*.part
+
+.DS_Store
