@@ -48,8 +48,7 @@ Other MiSTer boards run the same kind of ARM Linux system but have not been test
 
 Requirements: a MiSTer connected to your network, and a RomM server (5.2 or later) that it can reach.
 
-1. Download the latest `mister-romm-vX.Y.Z-sdcard.zip` from the [Releases](../../releases) page of this repository
-   (the repository is private: sign in to GitHub, or run `gh release download --repo tvdu29/mister-romm --pattern '*-sdcard.zip'`).
+1. Download the latest `mister-romm-vX.Y.Z-sdcard.zip` from the [Releases](../../releases) page of this repository.
 2. Extract the archive **at the root of the MiSTer's SD card**. It contains exactly:
 
        Scripts/romm.sh                       (the launcher shown in the Scripts menu)
