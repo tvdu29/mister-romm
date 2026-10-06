@@ -50,8 +50,8 @@ jobs:
           LDFLAGS="-s -w -X main.version=${VERSION}"
           BIN=out/sd/Scripts/.config/romm/bin
           mkdir -p "$BIN"
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "$BIN/romm-tui" ./cmd/romm-tui
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o out/romm-tui-linux-amd64 ./cmd/romm-tui
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "$LDFLAGS" -o "$BIN/romm-tui" ./src/cmd/romm-tui
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o out/romm-tui-linux-amd64 ./src/cmd/romm-tui
           cp "$BIN/romm-tui" out/romm-tui-linux-armv7
           cp sdcard/Scripts/romm.sh out/sd/Scripts/romm.sh
           chmod 755 out/sd/Scripts/romm.sh "$BIN/romm-tui" out/romm-tui-linux-*

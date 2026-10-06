@@ -108,5 +108,5 @@ errors (also in `last-error.log`). *Settings > Speed test* measures the internet
 Go (version in `go.mod`):
 
     go vet ./... && go test ./...
-    CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "-s -w" -o romm-tui-armv7 ./cmd/romm-tui   # MiSTer
-    go build -o romm-tui ./cmd/romm-tui                                                                              # PC
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "-s -w" -o romm-tui-armv7 ./src/cmd/romm-tui   # MiSTer
+    go build -o romm-tui ./src/cmd/romm-tui                                                                              # PC
