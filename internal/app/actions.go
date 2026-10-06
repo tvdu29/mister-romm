@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -90,6 +90,10 @@ func (m *model) finishSync(d syncDone) tea.Cmd {
 	m.noteErr("selection.json", writeSelection(m.cfgDir(), sel))
 	m.set("catalog_synced", fmt.Sprintf("%d", time.Now().Unix()))
 	m.reloadCatalog()
+	if d.unsafe > 0 {
+		logError(m.cfgDir(), fmt.Sprintf("sync: %d game(s) refused because of an unsafe file name", d.unsafe))
+		m.toast = fmt.Sprintf("%d game(s) were refused: unsafe file name sent by the server", d.unsafe)
+	}
 	if m.syncQuiet {
 		m.toast = fmt.Sprintf("Catalog up to date: %d games (%+d)", d.total, d.added)
 	} else {
@@ -202,6 +206,7 @@ type dlPlan struct {
 	bytes     int64
 	present   int
 	conflicts int
+	unsafe    int
 	unmapped  []string
 }
 
@@ -226,7 +231,15 @@ func (m *model) planDownload(games []*Game) dlPlan {
 			}
 			continue
 		}
+		if !safeName(g.Name) || !safeName(folder) {
+			p.unsafe++ // a file name from the server must never choose where it is written
+			continue
+		}
 		dest := filepath.Join(e.gamesDir, folder, g.Name)
+		if !within(e.gamesDir, dest) {
+			p.unsafe++
+			continue
+		}
 		if st, err := os.Stat(dest); err == nil {
 			if st.Size() == g.Size {
 				p.present++
@@ -260,6 +273,9 @@ func (m *model) askDownload() tea.Cmd {
 		}
 		if len(p.unmapped) > 0 {
 			lines = append(lines, "", "No folder known for: "+strings.Join(p.unmapped, ", "), "Set it in Settings > Platform folders.")
+		}
+		if p.unsafe > 0 {
+			lines = append(lines, "", fmt.Sprintf("%d game(s) refused: unsafe file name sent by the server.", p.unsafe))
 		}
 		m.message("Download", lines)
 		return nil
@@ -421,12 +437,7 @@ func (m *model) deleteGame(g *Game) {
 		m.message("Delete", []string{"This game was not downloaded by this program, so it is left alone."})
 		return
 	}
-	root := filepath.Clean(m.gamesDir()) + string(filepath.Separator)
-	if !strings.HasPrefix(filepath.Clean(r.Path), root) {
-		m.message("Delete", []string{"The file is outside the games folder, so it is left alone.", r.Path})
-		return
-	}
-	if err := os.Remove(r.Path); err != nil && !os.IsNotExist(err) {
+	if err := removeGameFile(m.gamesDir(), r.Path); err != nil {
 		m.message("Delete failed", []string{err.Error()})
 		return
 	}

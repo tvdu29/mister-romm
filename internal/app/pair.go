@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bytes"
@@ -92,16 +92,20 @@ func detail(raw string) string {
 		Detail any `json:"detail"`
 	}
 	if json.Unmarshal([]byte(raw), &d) == nil && d.Detail != nil {
-		return fmt.Sprint(d.Detail)
+		return clean(fmt.Sprint(d.Detail))
 	}
-	return strings.TrimSpace(raw)
+	return clean(strings.TrimSpace(raw))
 }
 
-func (m *model) saveCredentials(token, deviceID string, scopes []string) {
+func (m *model) saveCredentials(token, deviceID string, scopes []string) error {
+	if err := checkCredentials(token, deviceID, scopes); err != nil {
+		return err
+	}
 	m.data.Token = token
 	m.set("token", token)
 	m.set("device_id", deviceID)
 	m.set("scopes", strings.Join(scopes, " "))
+	return nil
 }
 
 // ----------------------------------------------------------- pairing from a phone
@@ -148,8 +152,8 @@ func (m *model) startPairing() tea.Cmd {
 		if exp <= 0 {
 			exp = 10 * time.Minute
 		}
-		return pairInitMsg{gen: gen, ps: &pairState{deviceCode: out.DeviceCode, userCode: out.UserCode,
-			url: base + out.PathFull, interval: iv, deadline: time.Now().Add(exp), nextPoll: time.Now().Add(iv)}}
+		return pairInitMsg{gen: gen, ps: &pairState{deviceCode: out.DeviceCode, userCode: clean(out.UserCode),
+			url: base + clean(out.PathFull), interval: iv, deadline: time.Now().Add(exp), nextPoll: time.Now().Add(iv)}}
 	}
 }
 
@@ -222,7 +226,10 @@ func (m *model) handlePair(msg tea.Msg) (tea.Cmd, bool) {
 		case "ok":
 			m.pair = nil
 			m.pairGen++
-			m.saveCredentials(msg.token, msg.deviceID, msg.scopes)
+			if err := m.saveCredentials(msg.token, msg.deviceID, msg.scopes); err != nil {
+				m.message("Pairing refused", []string{err.Error(), "", "Nothing was saved."})
+				return nil, true
+			}
 			m.message("Paired", []string{"This device is now connected to RomM.", "Permissions: " + strings.Join(msg.scopes, " "), "", "Next: press p to choose the platforms to index,", "then s to download their game list."})
 			return m.checkServer(), true
 		case "slow":
@@ -243,7 +250,10 @@ func (m *model) handlePair(msg tea.Msg) (tea.Cmd, bool) {
 			m.message("Pairing failed", []string{msg.text, "", "Codes are single-use and expire quickly: generate a new one."})
 			return nil, true
 		}
-		m.saveCredentials(msg.token, "", msg.scopes)
+		if err := m.saveCredentials(msg.token, "", msg.scopes); err != nil {
+			m.message("Pairing refused", []string{err.Error(), "", "Nothing was saved."})
+			return nil, true
+		}
 		m.message("Paired", []string{"This device is now connected to RomM.", "Permissions: " + strings.Join(msg.scopes, " "), "", "Next: press p to choose the platforms to index,", "then s to download their game list."})
 		return m.checkServer(), true
 	}

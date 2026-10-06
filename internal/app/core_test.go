@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -111,7 +111,7 @@ func TestDownloadResumesAndVerifies(t *testing.T) {
 	srv := romServer(t, data, &sent)
 	defer srv.Close()
 	dir := t.TempDir()
-	e := env{base: srv.URL, client: srv.Client(), longClient: srv.Client(), cfgDir: dir}
+	e := env{base: srv.URL, client: srv.Client(), longClient: srv.Client(), cfgDir: dir, gamesDir: dir}
 	it := dlItem{id: "7", name: "Game (USA).gb", dest: filepath.Join(dir, "GAMEBOY", "Game (USA).gb"), size: int64(len(data)), sha1: sha(data)}
 
 	// a partial file left by an interrupted download is resumed, not restarted
@@ -138,7 +138,7 @@ func TestDownloadRejectsWrongHash(t *testing.T) {
 	srv := romServer(t, data, &sent)
 	defer srv.Close()
 	dir := t.TempDir()
-	e := env{base: srv.URL, client: srv.Client(), longClient: srv.Client(), cfgDir: dir}
+	e := env{base: srv.URL, client: srv.Client(), longClient: srv.Client(), cfgDir: dir, gamesDir: dir}
 	it := dlItem{id: "1", name: "Bad.gb", dest: filepath.Join(dir, "Bad.gb"), size: int64(len(data)), sha1: strings.Repeat("0", 40)}
 	if err := downloadOne(context.Background(), e, it, func(dlProgress) {}); err == nil || !strings.Contains(err.Error(), "hash") {
 		t.Fatalf("expected a hash error, got %v", err)

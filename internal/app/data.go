@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -113,7 +113,7 @@ func loadData(root string) *Data {
 				id, rest, ok1 := strings.Cut(line, "\x1f")
 				name, rest, ok2 := strings.Cut(rest, "\x1f")
 				sizeS, sha, _ := strings.Cut(rest, "\x1f")
-				if !ok1 || !ok2 {
+				if !ok1 || !ok2 || !safeName(name) {
 					continue
 				}
 				size, _ := strconv.ParseInt(sizeS, 10, 64)

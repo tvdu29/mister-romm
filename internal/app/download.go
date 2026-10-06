@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	tea "charm.land/bubbletea/v2"
@@ -67,6 +67,9 @@ func runDownloads(ctx context.Context, e env, items []dlItem, send func(tea.Msg)
 }
 
 func downloadOne(ctx context.Context, e env, it dlItem, progress func(dlProgress)) error {
+	if !safeName(it.name) || !within(e.gamesDir, it.dest) {
+		return fmt.Errorf("refusing to write %q: it is not inside the games folder", it.dest)
+	}
 	if err := os.MkdirAll(filepath.Dir(it.dest), 0o755); err != nil {
 		return err
 	}
@@ -129,6 +132,10 @@ func fetchInto(ctx context.Context, e env, it dlItem, part string, have int64, p
 	case http.StatusOK:
 		have, flags = 0, flags|os.O_TRUNC // the server ignored the range
 	case http.StatusPartialContent:
+		var from int64 = -1
+		if _, err := fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-", &from); err != nil || from != have {
+			return true, nil // not the part we asked for: start again from zero
+		}
 		flags |= os.O_APPEND
 	case http.StatusRequestedRangeNotSatisfiable:
 		return have != it.size, nil
@@ -141,14 +148,21 @@ func fetchInto(ctx context.Context, e env, it dlItem, part string, have int64, p
 	}
 	buf := make([]byte, 64*1024)
 	done, lastSent, lastBytes := have, time.Now(), have
+	// never accept more than what the catalog announced (+1 byte to detect an overflow): a hostile
+	// server cannot fill the card by streaming forever
+	body := io.LimitReader(resp.Body, it.size-have+1)
 	for {
-		n, rerr := resp.Body.Read(buf)
+		n, rerr := body.Read(buf)
 		if n > 0 {
 			if _, werr := f.Write(buf[:n]); werr != nil {
 				f.Close()
 				return false, werr
 			}
 			done += int64(n)
+			if done > it.size {
+				f.Close()
+				return false, fmt.Errorf("the server sent more data than announced (%d bytes)", it.size)
+			}
 		}
 		if now := time.Now(); now.Sub(lastSent) >= 400*time.Millisecond {
 			speed := int64(float64(done-lastBytes) / now.Sub(lastSent).Seconds())

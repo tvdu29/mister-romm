@@ -1,10 +1,11 @@
-package main
+package app
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,7 +67,7 @@ func (m *model) insecure() bool { return m.cfg("verify_tls", "1") == "0" || m.se
 func (m *model) env() env {
 	pool, src := m.caPool()
 	mk := func(timeout time.Duration) *http.Client {
-		return &http.Client{Timeout: timeout, Transport: &http.Transport{
+		return &http.Client{Timeout: timeout, CheckRedirect: sameHostRedirect, Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			TLSClientConfig:       &tls.Config{RootCAs: pool, InsecureSkipVerify: m.insecure()},
 			TLSHandshakeTimeout:   15 * time.Second,
@@ -130,8 +131,8 @@ func clockOK() bool { return time.Now().Year() >= 2024 }
 // logError appends to <config>/last-error.log (kept small) so failures can be read afterwards.
 func logError(cfgDir, msg string) {
 	f := filepath.Join(cfgDir, "last-error.log")
-	_ = os.MkdirAll(cfgDir, 0o755)
-	if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+	_ = os.MkdirAll(cfgDir, 0o700)
+	if fh, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
 		fmt.Fprintf(fh, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
 		fh.Close()
 	}
@@ -144,4 +145,20 @@ func logError(cfgDir, msg string) {
 			_ = os.WriteFile(f, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
 		}
 	}
+}
+
+// maxJSON caps the JSON bodies read from the server (a catalog page is far smaller).
+const maxJSON = 64 << 20
+
+// sameHostRedirect follows redirects within the same host and scheme only, so the token (sent as
+// a header) never reaches another server and HTTPS is never downgraded.
+func sameHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return errors.New("too many redirects")
+	}
+	first := via[0].URL
+	if req.URL.Scheme != first.Scheme || req.URL.Host != first.Host {
+		return fmt.Errorf("refusing a redirect to %s://%s", req.URL.Scheme, req.URL.Host)
+	}
+	return nil
 }

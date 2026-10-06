@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -55,8 +56,8 @@ func readCatalog(path string) map[string]catRow {
 		id, rest, ok1 := strings.Cut(sc.Text(), "\x1f")
 		name, rest, ok2 := strings.Cut(rest, "\x1f")
 		sizeS, sha, _ := strings.Cut(rest, "\x1f")
-		if !ok1 || !ok2 || id == "" || strings.Trim(id, "0123456789") != "" {
-			continue // only well-formed lines
+		if !ok1 || !ok2 || id == "" || strings.Trim(id, "0123456789") != "" || !safeName(name) {
+			continue // only well-formed lines with a safe name
 		}
 		size, _ := strconv.ParseInt(sizeS, 10, 64)
 		rows[id] = catRow{id: id, name: name, size: size, sha1: sha}
@@ -96,8 +97,11 @@ func fetchPlatforms(ctx context.Context, e env) ([]srvPlatform, error) {
 		return nil, fmt.Errorf("%s", explainHTTP(resp))
 	}
 	var list []srvPlatform
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxJSON)).Decode(&list); err != nil {
 		return nil, fmt.Errorf("the server answered with something that is not a platform list: %v", err)
+	}
+	for i := range list {
+		list[i].Slug, list[i].Name, list[i].Display = clean(list[i].Slug), clean(list[i].Name), clean(list[i].Display)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].title() < list[j].title() })
 	return list, nil
@@ -109,6 +113,7 @@ type syncDone struct {
 	err          string
 	cancelled    bool
 	synced       map[string]string // platform id -> synced_at
+	unsafe       int               // games refused because of an unsafe file name
 }
 
 // runSync refreshes the index of every selected platform. Incremental (server-side updated_after)
@@ -158,7 +163,7 @@ func runSync(ctx context.Context, e env, plats map[string]*selPlatform, full boo
 				} `json:"items"`
 				Total int `json:"total"`
 			}
-			err = json.NewDecoder(resp.Body).Decode(&page)
+			err = json.NewDecoder(io.LimitReader(resp.Body, maxJSON)).Decode(&page)
 			resp.Body.Close()
 			cancelPage()
 			if err != nil {
@@ -167,6 +172,10 @@ func runSync(ctx context.Context, e env, plats map[string]*selPlatform, full boo
 				return
 			}
 			for _, it := range page.Items {
+				if !safeName(it.Name) {
+					done.unsafe++ // never index a name that could escape the games folder
+					continue
+				}
 				id := strconv.Itoa(it.ID)
 				r := catRow{id: id, name: it.Name, size: it.Size}
 				if it.SHA1 != nil {

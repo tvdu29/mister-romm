@@ -1,9 +1,9 @@
-// mister-romm: a terminal interface to browse a RomM server and download games on a MiSTer.
+// Package app is mister-romm: a terminal interface to browse a RomM server and download games on a MiSTer.
 //
 // Left panel: menu and platforms. Right panel: the synced catalog, always selectable and
 // searchable. Pop-ups (confirmations, context menus, downloads, settings) are drawn over it.
 // It does everything on its own: pairing, catalog sync, downloads, delete, diagnostics.
-package main
+package app
 
 import (
 	"flag"
@@ -16,10 +16,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// version is set at build time with -ldflags "-X main.version=vX.Y.Z".
+// version is the build version (set by Run).
 var version = "dev"
 
-func main() {
+// Run starts the program; v is the build version printed by -version.
+func Run(v string) {
+	version = v
 	root := flag.String("root", "", "data root: settings live in <root>/Scripts/.config/romm and games in <root>/games (default: /media/fat on a MiSTer, else ~/.config/mister-romm)")
 	ascii := flag.Bool("ascii", os.Getenv("ROMM_ASCII") != "", "ASCII borders instead of box-drawing characters")
 	ver := flag.Bool("version", false, "print the version")

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"encoding/json"
@@ -118,6 +118,9 @@ func resolveFolder(e env, slug, name string) string {
 	cand := e.mapping[slug]
 	if cand == "" {
 		cand = defaultFolders[slug]
+	}
+	if cand != "" && !safeName(cand) {
+		cand = "" // mapping.json is not trusted either
 	}
 	if cand != "" {
 		if d := existingDir(e.gamesDir, cand); d != "" {

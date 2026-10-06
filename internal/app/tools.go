@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -104,6 +104,7 @@ func runDoctor(ctx context.Context, e env, in docInfo, send func(tea.Msg)) {
 			line("[FAILED] reachable: %s", explainErr(err, clockOK()))
 			if !e.insecure {
 				e2 := e
+				e2.token = "" // the token must never reach a peer whose certificate is not verified
 				e2.client = insecureClient(e.client)
 				ctx3, c3 := context.WithTimeout(ctx, 20*time.Second)
 				if r2, err2 := e2.get(ctx3, e2.client, "/api/heartbeat", nil); err2 == nil {

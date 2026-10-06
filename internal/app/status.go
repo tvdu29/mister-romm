@@ -1,8 +1,9 @@
-package main
+package app
 
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,7 +41,7 @@ func (m *model) checkServer() tea.Cmd {
 				Version string `json:"VERSION"`
 			} `json:"SYSTEM"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&hb)
+		_ = json.NewDecoder(io.LimitReader(resp.Body, maxJSON)).Decode(&hb)
 		resp.Body.Close()
 		if resp.StatusCode != 200 {
 			return srvStatus{state: "unreachable", err: "HTTP " + strconv.Itoa(resp.StatusCode)}

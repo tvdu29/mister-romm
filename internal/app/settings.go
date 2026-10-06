@@ -1,9 +1,10 @@
-package main
+package app
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +23,9 @@ func cfgPath(root string) string {
 // setConfig updates one key of config.ini and keeps every other line (including the token, which
 // this program never loads). The file stays private (0600), as written by romm.sh.
 func setConfig(root, key, value string) error {
+	if strings.ContainsAny(value, "\r\n\x00") || strings.ContainsAny(key, "=\r\n\x00") {
+		return fmt.Errorf("refusing to store a value with a line break in config.ini")
+	}
 	path := cfgPath(root)
 	var lines []string
 	if b, err := os.ReadFile(path); err == nil {
@@ -36,11 +40,20 @@ func setConfig(root, key, value string) error {
 	if !found {
 		lines = append(lines, key+"="+value)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+	_ = os.Remove(tmp) // a leftover file could have looser permissions
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(strings.Join(lines, "\n") + "\n"); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
@@ -48,7 +61,7 @@ func setConfig(root, key, value string) error {
 
 // set stores a setting in memory and on disk, and reports a failure in a message window.
 func (m *model) set(key, value string) {
-	if key != "token" { // the token is only written to the file, never kept in memory
+	if key != "token" { // the token is kept out of the settings map (it lives in m.data.Token)
 		m.data.Config[key] = value
 	}
 	m.noteErr("config.ini", setConfig(m.data.Root, key, value))
@@ -267,7 +280,7 @@ func (m *model) testConnection() tea.Cmd {
 				Version string `json:"VERSION"`
 			} `json:"SYSTEM"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&hb)
+		_ = json.NewDecoder(io.LimitReader(resp.Body, maxJSON)).Decode(&hb)
 		if resp.StatusCode != 200 {
 			return connResultMsg{"Connection problem", []string{fmt.Sprintf("The server answered HTTP %d.", resp.StatusCode)}}
 		}
