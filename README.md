@@ -110,3 +110,10 @@ Go (version in `go.mod`):
     go vet ./... && go test ./...
     CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags "-s -w" -o romm-tui-armv7 ./src/cmd/romm-tui   # MiSTer
     go build -o romm-tui ./src/cmd/romm-tui                                                                              # PC
+
+## License
+
+[GNU GPL v3.0 or later](LICENSE), the same family of license as the MiSTer firmware and cores.
+
+`src/internal/app/cacert.pem` is the [Mozilla CA certificate bundle](https://curl.se/docs/caextract.html), embedded so HTTPS
+works on a MiSTer; it keeps its own license, the Mozilla Public License 2.0.
