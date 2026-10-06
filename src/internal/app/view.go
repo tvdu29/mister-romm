@@ -150,8 +150,11 @@ func (m *model) render() string {
 
 // header is the status bar: program name, server state, platforms and games, and what is running.
 func (m *model) header(w int) string {
-	title := m.cursorStyle().Render(" mister-romm ")
 	dim := m.dimStyle()
+	title := m.cursorStyle().Render(" mister-romm ")
+	if w >= 70 { // the version is dropped on a narrow terminal
+		title += dim.Render(" " + version)
+	}
 	plat := fmt.Sprintf("%d", len(m.data.Platforms))
 	games := fmt.Sprintf("%d", len(m.data.Games))
 	tail := dim.Render("  Platforms ") + m.sNorm.Render(plat) + dim.Render("  Games ") + m.sNorm.Render(games)
