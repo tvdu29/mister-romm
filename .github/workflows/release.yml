@@ -1,6 +1,6 @@
 name: release
 
-# Tags (v*) pushed on master are built and published as a GitHub release.
+# Tags (v*) pushed on the default branch are built and published as a GitHub release.
 # "Run workflow" (manual) builds the same files as an artifact, without publishing.
 on:
   push:
@@ -22,12 +22,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: The tag must be on master
+      - name: The tag must be on the default branch
         if: github.ref_type == 'tag'
         run: |
-          git fetch --no-tags origin master
+          BRANCH="${{ github.event.repository.default_branch }}"
+          git fetch --no-tags origin "$BRANCH"
           if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
-            echo "::error::tag $GITHUB_REF_NAME is not on master: nothing was built"
+            echo "::error::tag $GITHUB_REF_NAME is not on $BRANCH: nothing was built"
             exit 1
           fi
 
