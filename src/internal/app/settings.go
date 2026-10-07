@@ -132,10 +132,17 @@ func (m *model) serverItems() (labels, ids []string) {
 		"Pair with a code",
 		"Test connection",
 		"Disconnect (forget the token) - " + paired,
-		"Close",
 	}
-	ids = []string{"url", "tls", "pair", "code", "test", "forget", "close"}
+	ids = []string{"url", "tls", "pair", "code", "test", "forget"}
 	return
+}
+
+// forgetCredentials drops the token and the pairing data of this device.
+func (m *model) forgetCredentials() {
+	m.set("token", "")
+	m.data.Token = ""
+	m.set("device_id", "")
+	m.set("scopes", "")
 }
 
 func (m *model) openServer() {
@@ -153,10 +160,8 @@ func (m *model) openServer() {
 						if u != m.cfg("server_url", "") {
 							m.set("server_url", u)
 							// a token belongs to one server: forget it when the address changes
-							m.set("token", "")
-							m.data.Token = ""
-							m.set("device_id", "")
-							m.set("scopes", "")
+							m.forgetCredentials()
+							return m.startPairing() // a new address means a device to pair
 						}
 						m.openServer()
 						return m.checkServer()
@@ -172,10 +177,7 @@ func (m *model) openServer() {
 				return m.testConnection()
 			case "forget":
 				m.confirm("Disconnect", []string{"Forget the token stored on this device?", "", "It stays valid in RomM until you revoke it there."}, func(m *model) tea.Cmd {
-					m.set("token", "")
-					m.data.Token = ""
-					m.set("device_id", "")
-					m.set("scopes", "")
+					m.forgetCredentials()
 					m.openServer()
 					return m.checkServer()
 				})
@@ -200,9 +202,8 @@ func (m *model) settingsItems() (labels, ids []string) {
 		"Diagnostics",
 		"Borders: " + border,
 		"Colors: " + m.cfg("tui_colors", "auto") + " (" + m.th.Name + ")",
-		"Close",
 	}
-	ids = []string{"games", "autosync", "folders", "rebuild", "speed", "doctor", "borders", "colors", "close"}
+	ids = []string{"games", "autosync", "folders", "rebuild", "speed", "doctor", "borders", "colors"}
 	return
 }
 
@@ -296,7 +297,6 @@ func (m *model) testConnection() tea.Cmd {
 
 // openFolders lists the indexed platforms with the folder their games go to; Enter edits it.
 func (m *model) openFolders() {
-	e := m.env()
 	items := func(m *model) (labels, ids []string) {
 		e := m.env()
 		for _, p := range m.data.Platforms {
@@ -308,11 +308,10 @@ func (m *model) openFolders() {
 			ids = append(ids, p.ID)
 		}
 		if len(labels) == 0 {
-			labels, ids = []string{"No platform is indexed yet"}, []string{"close"}
+			labels, ids = []string{"No platform is indexed yet"}, []string{"none"}
 		}
-		return append(labels, "Close"), append(ids, "close")
+		return
 	}
-	_ = e
 	m.pop = &popup{kind: "settings", title: "Platform folders", dyn: items,
 		act: func(m *model, id string) tea.Cmd {
 			p := m.platformByID(id)

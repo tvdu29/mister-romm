@@ -291,7 +291,7 @@ func (m *model) rightPanel(w, h int) string {
 	case "settings":
 		lines, kind = m.settingsLines(), kSettings
 	case "downloads":
-		lines, kind = m.downloadLines(iw), kMessage
+		lines, kind = m.downloadLines(iw, h-2), kMessage
 	case "sync":
 		lines, kind = m.actionLines("Sync catalog", "Downloads the list of games of your indexed platforms (not the games).", "Incremental: only what changed since the last time.", "Enter or s to start, c to cancel while it runs."), kSettings
 	case "platforms":
@@ -322,11 +322,13 @@ func (m *model) listLines(iw, rows int, kind string) []string {
 	lines = append(lines, " "+q+strings.Repeat(" ", gap)+count)
 
 	if len(m.data.Games) == 0 {
+		if m.syncJob != nil {
+			return append(lines, "", m.accentStyle().Render(" Indexing the catalog..."), "", " The games appear here as soon as the sync is done.")
+		}
 		return append(lines, "",
-			m.accentStyle().Render(" The catalog is empty. Three steps:"), "",
-			m.step(1, "Server > Pair this device", m.srv.state == "connected"),
-			m.step(2, "p : choose the platforms to index", len(m.data.Platforms) > 0),
-			m.step(3, "s : sync the catalog (downloads the game list)", false), "",
+			m.accentStyle().Render(" The catalog is empty. Two steps:"), "",
+			m.step(1, "Server > Pair this device", m.data.Token != ""),
+			m.step(2, "p : choose the platforms to index (Enter syncs them)", len(readSelection(m.cfgDir())) > 0), "",
 			" Settings are read from:", "   "+m.cfgDir())
 	}
 	if len(m.view) == 0 {
@@ -419,7 +421,8 @@ func (m *model) settingsLines() []string {
 	}
 }
 
-func (m *model) downloadLines(iw int) []string {
+// downloadLines draws the queue in at most rows lines (2 per entry, plus the header and 2 markers).
+func (m *model) downloadLines(iw, rows int) []string {
 	if len(m.queue) == 0 {
 		return []string{"", " No download yet.", "", " Tick games in the catalog and press d."}
 	}
@@ -429,13 +432,29 @@ func (m *model) downloadLines(iw int) []string {
 		free = "   free space " + humanSize(f)
 	}
 	lines = append(lines, "", m.dimStyle().Render(" Games folder: "+trunc(m.gamesDir(), iw-20)+free), "")
-	start := 0
-	if len(m.queue) > 6 {
-		start = len(m.queue) - 6 // show the most recent entries
+	// Show a window of entries starting at the first one still active (running, verifying or
+	// queued); when fewer remain, the last finished ones fill the window.
+	shown := max(1, (rows-6)/2)
+	start := len(m.queue)
+	for i, d := range m.queue {
+		if d.state == "queued" || d.state == "running" || d.state == "verifying" {
+			start = i
+			break
+		}
 	}
-	for _, d := range m.queue[start:] {
+	if start+shown > len(m.queue) {
+		start = max(0, len(m.queue)-shown)
+	}
+	end := min(start+shown, len(m.queue))
+	if start > 0 {
+		lines = append(lines, m.dimStyle().Render(fmt.Sprintf(" ... %d earlier", start)))
+	}
+	for _, d := range m.queue[start:end] {
 		lines = append(lines, " "+trunc(d.g.Name, iw-4))
 		lines = append(lines, " "+m.bar(d, iw-4))
+	}
+	if end < len(m.queue) {
+		lines = append(lines, m.dimStyle().Render(fmt.Sprintf(" ... %d more waiting", len(m.queue)-end)))
 	}
 	return lines
 }
@@ -581,7 +600,7 @@ func (m *model) renderPopup() string {
 		}
 		lines = append(lines, "", m.accStyle(kind).Render(" > "+p.text+"_"))
 	case "downloads":
-		lines = append(lines, m.downloadLines(60)...)
+		lines = append(lines, m.downloadLines(60, m.h-10)...)
 		lines = append(lines, "", m.dimStyle().Render(" Esc: hide (downloads continue)   c: cancel all"))
 	default: // info, help
 		for _, l := range p.lines {

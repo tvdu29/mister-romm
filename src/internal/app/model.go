@@ -67,7 +67,6 @@ type model struct {
 	toolJob         *job
 	clockJob        *job
 	syncText        string
-	syncQuiet       bool
 	dlBatch         []*dl
 	autosyncDone    bool
 	saveErr         string // last failure to write a file: shown in the status bar until it works again
@@ -295,7 +294,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case srvStatus:
 		m.srv = msg
 		if msg.state == "connected" && len(m.data.Platforms) == 0 && m.pop == nil {
-			m.toast = "Connected. Press p to choose the platforms to index, then s to sync."
+			m.toast = "Connected. Press p to choose the platforms to index."
 		}
 		if msg.state == "connected" && !m.autosyncDone {
 			m.autosyncDone = true
@@ -397,21 +396,10 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 		case "down", "j":
 			m.selectLeft(m.lcur + 1)
 		case "enter", "right", "l":
-			switch m.cur().kind {
-			case "server":
-				m.openServer()
-			case "settings":
-				m.openSettings()
-			case "sync":
-				return m.startSync(false, false)
-			case "platforms":
-				return m.openPlatforms()
-			case "downloads":
-				m.focus = fRight
-				m.openDownloads()
-			default:
+			if m.isListView() || m.cur().kind == "downloads" {
 				m.focus = fRight
 			}
+			return m.activate()
 		}
 		return nil
 	}
@@ -424,18 +412,7 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if !m.isListView() {
 		if k == "enter" {
-			switch m.cur().kind {
-			case "downloads":
-				m.openDownloads()
-			case "server":
-				m.openServer()
-			case "settings":
-				m.openSettings()
-			case "sync":
-				return m.startSync(false, false)
-			case "platforms":
-				return m.openPlatforms()
-			}
+			return m.activate()
 		}
 		return nil
 	}
@@ -474,6 +451,23 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	m.clampRight()
+	return nil
+}
+
+// activate runs the action of the selected menu entry (nothing for the game lists).
+func (m *model) activate() tea.Cmd {
+	switch m.cur().kind {
+	case "downloads":
+		m.openDownloads()
+	case "server":
+		m.openServer()
+	case "settings":
+		m.openSettings()
+	case "sync":
+		return m.startSync(false, false)
+	case "platforms":
+		return m.openPlatforms()
+	}
 	return nil
 }
 
@@ -649,12 +643,7 @@ func (m *model) contextMenu() tea.Cmd {
 	} else {
 		items = append(items, "Download")
 	}
-	if m.sel[g.Key()] {
-		items = append(items, "Unselect")
-	} else {
-		items = append(items, "Select")
-	}
-	items = append(items, "Game info", "Close")
+	items = append(items, "Game info")
 	m.pop = &popup{kind: "menu", title: trunc(g.Name, 44), items: items,
 		act: func(m *model, label string) tea.Cmd {
 			switch label {
@@ -665,8 +654,6 @@ func (m *model) contextMenu() tea.Cmd {
 					m.deleteGame(g)
 					return nil
 				})
-			case "Select", "Unselect":
-				m.toggle(g)
 			case "Game info":
 				m.openInfo(g)
 			}
@@ -720,8 +707,6 @@ func (m *model) openDownloads() {
 }
 
 // ------------------------------------------------------------------- downloads
-
-// advance moves the simulated download forward. Real downloads will replace this.
 
 // checkStorage verifies that the settings folder can be written.
 func checkStorage(dir string) error {
