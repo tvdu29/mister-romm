@@ -272,6 +272,13 @@ func (m *model) askDownload() tea.Cmd {
 		return nil
 	}
 	lines := []string{fmt.Sprintf("Download %d game(s), %s?", len(p.items), humanSize(p.bytes)), ""}
+	if free, ok := freeSpace(m.gamesDir()); ok { // p.bytes <= free: checked just above
+		warn := ""
+		if free-p.bytes < lowSpace {
+			warn = "   (low space!)"
+		}
+		lines = append(lines, fmt.Sprintf("Free space: %s  ->  %s left after%s", humanSize(free), humanSize(free-p.bytes), warn), "")
+	}
 	for i, it := range p.items {
 		if i == 8 {
 			lines = append(lines, fmt.Sprintf("... and %d more", len(p.items)-8))
@@ -294,6 +301,9 @@ func (m *model) askDownload() tea.Cmd {
 	m.confirm("Download", lines, func(m *model) tea.Cmd { return m.queueDownloads(p) })
 	return nil
 }
+
+// lowSpace is what must remain on the card after a download for it not to be flagged.
+const lowSpace = 500 << 20
 
 // startDownload downloads one game straight away (context menu).
 func (m *model) startDownload(games []*Game) tea.Cmd {

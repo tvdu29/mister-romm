@@ -31,6 +31,8 @@ func Run(v string) {
 		return
 	}
 
+	removeOwnCopy()
+
 	// Tuned for a dual-core 800 MHz Cortex-A9 with a slow framebuffer console: few redraws per
 	// second, and a lazier garbage collector (the catalog is a few MB, memory is not the limit).
 	runtime.GOMAXPROCS(2)
@@ -50,9 +52,16 @@ func Run(v string) {
 	// Use stdin/stdout directly instead of opening /dev/tty: the MiSTer starts scripts through
 	// agetty on tty2, which provides a terminal on stdin even where /dev/tty is not available.
 	p := tea.NewProgram(m, tea.WithInput(os.Stdin), tea.WithOutput(os.Stdout), tea.WithFPS(20))
-	if _, err := p.Run(); err != nil {
+	final, err := p.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "mister-romm-tui:", err)
 		os.Exit(1)
+	}
+	// an update was installed: restart into it (the terminal has been restored by now)
+	if fm, ok := final.(*model); ok && fm.relaunch != "" {
+		err := relaunch(fm.relaunch)
+		_ = os.Remove(fm.relaunch)
+		fmt.Fprintln(os.Stderr, "mister-romm-tui: update installed, restart it from the Scripts menu:", err)
 	}
 }
 

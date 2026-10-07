@@ -200,10 +200,11 @@ func (m *model) settingsItems() (labels, ids []string) {
 		"Rebuild the catalog from scratch",
 		"Speed test (internet, card, server)",
 		"Diagnostics",
+		"Check for updates (installed: " + version + ")",
 		"Borders: " + border,
 		"Colors: " + m.cfg("tui_colors", "auto") + " (" + m.th.Name + ")",
 	}
-	ids = []string{"games", "autosync", "folders", "rebuild", "speed", "doctor", "borders", "colors"}
+	ids = []string{"games", "autosync", "folders", "rebuild", "speed", "doctor", "update", "borders", "colors"}
 	return
 }
 
@@ -232,6 +233,8 @@ func (m *model) openSettings() {
 				return m.openSpeedTest()
 			case "doctor":
 				return m.openDoctor()
+			case "update":
+				return m.openUpdate()
 			case "autosync":
 				m.set("autosync", map[bool]string{true: "0", false: "1"}[m.cfg("autosync", "1") != "0"])
 			case "borders":
