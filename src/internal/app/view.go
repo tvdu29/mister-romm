@@ -180,6 +180,8 @@ func (m *model) busyText() string {
 	switch {
 	case m.syncJob != nil:
 		return m.syncText
+	case m.saves.job != nil:
+		return m.saves.text
 	case m.dlJob != nil:
 		done, n := 0, len(m.dlBatch)
 		var cur *dl
@@ -219,6 +221,8 @@ func (m *model) footer(w int) string {
 		s = " type to filter   Enter keep the filter   Esc clear"
 	case m.focus == fLeft:
 		s = " Up/Down choose   Enter/Right open   Tab panels   ? help   q quit"
+	case m.cur().kind == "saves":
+		s = " Up/Down move   Enter details   r compare again   c cancel   Tab panels   ? help   q quit"
 	case m.isListView():
 		s = " Space tick   / search   Enter menu   d download   a all   x none   Tab panels   ? help   q quit"
 	default:
@@ -292,6 +296,8 @@ func (m *model) rightPanel(w, h int) string {
 		lines, kind = m.settingsLines(), kSettings
 	case "downloads":
 		lines, kind = m.downloadLines(iw), kMessage
+	case "saves":
+		lines = m.savesLines(iw, h-2)
 	case "sync":
 		lines, kind = m.actionLines("Sync catalog", "Downloads the list of games of your indexed platforms (not the games).", "Incremental: only what changed since the last time.", "Enter or s to start, c to cancel while it runs."), kSettings
 	case "platforms":

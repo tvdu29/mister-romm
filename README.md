@@ -22,7 +22,9 @@ lives on a home server and the MiSTer should simply fetch what you want to play.
 - **Tools**: diagnostics, speed test, automatic clock setting (`ntpd`) and built-in HTTPS certificates, which matter on a MiSTer without a battery-backed clock
 - A single **static** binary (ARMv7), nothing to install on the MiSTer
 
-Save games are not handled, only the game library.
+- **Saves** (read only for now): compares the battery saves of the card with the saves RomM keeps for the same games,
+  such as the ones uploaded by RetroArch or the web player, after converting between the MiSTer and emulator formats.
+  See [Saves](#saves).
 
 ## Screenshots
 
@@ -82,6 +84,23 @@ To try it on a Linux PC without a MiSTer, take `romm-tui-linux-amd64` (or build 
 
 `*` after `[ ]` means the game was downloaded by this program. Colors: pink = games, cyan = settings, green = messages,
 orange = questions.
+
+## Saves
+
+The **Saves** entry of the menu compares the battery saves of the card (`saves/<core>/<game>.sav`) with the saves RomM
+keeps for the same games. It only reads: nothing is written to the card or to the server yet.
+
+- A save is matched to a game of the catalog by its name (the game file name without its extension).
+- The RomM save compared is the newest of the `autosave` slot, where RomM clients (RetroArch through Grout or Argosy,
+  the web player, Playnite...) keep the save they sync.
+- Formats differ between the MiSTer and emulators, so both are converted before comparing: SNES, NES, Game Boy and
+  Game Boy Color (the MiSTer clock block), GBA (EEPROM padding, clock data), Mega Drive (byte expansion), PlayStation
+  (memory card). Other cores (N64, Saturn, Master System...) show `n/a`. Savestates are never compared: they cannot be
+  converted.
+- The date of a save on the card is only right when the clock was set when the game saved.
+
+Saves need permissions that older pairings did not ask for: if the comparison fails with HTTP 403, pair the device
+again (*Server > Pair this device*).
 
 ## Where is my data?
 

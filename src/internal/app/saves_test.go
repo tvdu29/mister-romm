@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -149,4 +150,47 @@ func TestBaseName(t *testing.T) {
 			t.Errorf("baseName(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+func TestSavesViewRenders(t *testing.T) {
+	m := bigModel(400)
+	for i, it := range m.left {
+		if it.kind == "saves" {
+			m.selectLeft(i)
+		}
+	}
+	if m.cur().kind != "saves" {
+		t.Fatal("no Saves entry in the menu")
+	}
+	if out := m.render(); !strings.Contains(out, "Enter or r to compare") {
+		t.Error("the view should explain how to start before the first comparison")
+	}
+	now := time.Date(2026, 10, 9, 18, 40, 0, 0, time.UTC)
+	m.finishSaveScan(saveScanDone{
+		devices: map[string]string{"dev1": "Steam Deck"},
+		rows: []*saveRow{
+			{gameID: "1", name: "Super Metroid (USA).sfc", platform: "SNES", core: "SNES", state: ssDifferent,
+				local: &localSave{path: "/media/fat/saves/SNES/Super Metroid (USA).sav", size: 8192, modTime: time.Unix(5, 0)},
+				cloud: &srvSave{ID: 3, FileName: "Super Metroid (USA) [2026-10-09_18-40-00].srm", Slot: "autosave", Device: "dev1", UpdatedAt: now, Size: 8192}, cloudN: 3},
+			{gameID: "2", name: "Zelda (USA).sfc", platform: "SNES", core: "SNES", state: ssSame},
+		},
+	})
+	for _, w := range []int{50, 80, 160} {
+		m.w = w
+		out := m.render()
+		if !strings.Contains(out, "DIFF") || !strings.Contains(out, "Super Metr") {
+			t.Errorf("width %d: rows missing:\n%s", w, out)
+		}
+		for i, l := range strings.Split(out, "\n") {
+			if width(l) > w {
+				t.Errorf("width %d: line %d is %d cells wide", w, i, width(l))
+			}
+		}
+	}
+	m.focus = fRight
+	m.savesKey("enter")
+	if m.pop == nil || !strings.Contains(strings.Join(m.pop.lines, "\n"), "date unknown") || !strings.Contains(strings.Join(m.pop.lines, "\n"), "Steam Deck") {
+		t.Errorf("details window: %+v", m.pop)
+	}
+	_ = m.render()
 }

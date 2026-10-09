@@ -22,6 +22,10 @@ func (m *model) onJob(f fromJob) tea.Cmd {
 		if m.pop != nil && m.pop.kind == "tool" {
 			m.pop.lines = append(m.pop.lines, x.text)
 		}
+	case saveScanProgress:
+		m.saves.text = x.text
+	case saveScanDone:
+		m.finishSaveScan(x)
 	case clockResult:
 		return m.finishClock(x)
 	case jobClosed:
@@ -32,6 +36,8 @@ func (m *model) onJob(f fromJob) tea.Cmd {
 			m.dlJob = nil
 			m.downloadSummary()
 			return m.kickDownloads()
+		case m.saves.job:
+			m.saves.job, m.saves.text = nil, ""
 		case m.toolJob:
 			m.toolJob = nil
 			if m.pop != nil && m.pop.kind == "tool" {

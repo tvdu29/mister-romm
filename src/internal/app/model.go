@@ -71,6 +71,8 @@ type model struct {
 	autosyncDone    bool
 	saveErr         string // last failure to write a file: shown in the status bar until it works again
 
+	saves savesState // the Saves view
+
 	srv     srvStatus  // state of the connection to the RomM server
 	pair    *pairState // pairing in progress (device flow)
 	pairGen int        // incremented to invalidate stale pairing messages
@@ -157,6 +159,7 @@ func (m *model) buildLeft() {
 	m.left = append(m.left,
 		leftItem{"sep", "", "", ""},
 		leftItem{"installed", "", "Installed", n(installed)},
+		leftItem{"saves", "", "Saves", m.savesCount()},
 		leftItem{"downloads", "", "Downloads", n(m.activeDownloads())},
 		leftItem{"sync", "", "Sync catalog", ""},
 		leftItem{"platforms", "", "Platforms to index", ""},
@@ -372,6 +375,9 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 		if m.syncJob != nil {
 			m.syncJob.cancel()
 			m.toast = "Cancelling the sync..."
+		} else if m.saves.job != nil {
+			m.saves.job.cancel()
+			m.toast = "Cancelling the comparison of the saves..."
 		} else if m.dlJob != nil {
 			m.cancelDownloads()
 			m.toast = "Cancelling the downloads..."
@@ -408,6 +414,11 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 			case "downloads":
 				m.focus = fRight
 				m.openDownloads()
+			case "saves":
+				m.focus = fRight
+				if !m.saves.scanned {
+					return m.startSaveScan()
+				}
 			default:
 				m.focus = fRight
 			}
@@ -420,6 +431,9 @@ func (m *model) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "left", "h", "esc":
 		m.focus = fLeft
 		return nil
+	}
+	if m.cur().kind == "saves" {
+		return m.savesKey(k)
 	}
 	if !m.isListView() {
 		if k == "enter" {
@@ -705,6 +719,7 @@ func (m *model) openHelp() {
 		"Enter           context menu of the game",
 		"d               download the ticked games",
 		"s / p / c       sync the catalog / platforms to index / cancel",
+		"r               Saves: compare the saves of the card with RomM again",
 		"q               quit      ?  this help",
 		"",
 		"Colors: pink = games, cyan = settings, green = information,",
