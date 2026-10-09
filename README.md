@@ -20,6 +20,7 @@ lives on a home server and the MiSTer should simply fetch what you want to play.
 - **Downloads** with resume, size and sha1 verification, free-space check and cancellation
 - **Management**: delete the games you downloaded, choose the destination folder of each platform
 - **Tools**: diagnostics, speed test, automatic clock setting (`ntpd`) and built-in HTTPS certificates, which matter on a MiSTer without a battery-backed clock
+- **Self-update** from the GitHub releases (*Settings > Update*), checked against the published SHA-256
 - A single **static** binary (ARMv7), nothing to install on the MiSTer
 
 Save games are not handled, only the game library.
@@ -58,6 +59,13 @@ Requirements: a MiSTer connected to your network, and a RomM server (5.2 or late
 
 To try it on a Linux PC without a MiSTer, take `romm-tui-linux-amd64` (or build it) and run it in a terminal.
 `--ascii` gives ASCII borders.
+
+### Update
+
+*Settings > Update mister-romm* downloads the latest release from GitHub, checks its SHA-256 against the `SHA256SUMS`
+of the release and replaces `Scripts/.config/romm/bin/romm-tui` (the previous version is kept as `romm-tui.prev`).
+Restart the program to use it. At start the program looks for a new release and says so in the bottom line; turn this
+off with *Check for updates at start*. Installing the zip by hand, as above, still works.
 
 ### First run
 

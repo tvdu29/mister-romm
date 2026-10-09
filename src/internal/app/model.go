@@ -71,6 +71,8 @@ type model struct {
 	autosyncDone    bool
 	saveErr         string // last failure to write a file: shown in the status bar until it works again
 
+	latest string // latest release found on GitHub ("" until checked)
+
 	srv     srvStatus  // state of the connection to the RomM server
 	pair    *pairState // pairing in progress (device flow)
 	pairGen int        // incremented to invalidate stale pairing messages
@@ -94,7 +96,15 @@ func (m *model) Init() tea.Cmd {
 		m.srv = srvStatus{state: "clock"}
 		return cmd
 	}
-	return m.checkServer()
+	return tea.Batch(m.checkServer(), m.startUpdateCheck())
+}
+
+// startUpdateCheck looks for a new release at start, unless turned off in the settings.
+func (m *model) startUpdateCheck() tea.Cmd {
+	if m.cfg("update_check", "1") == "0" {
+		return nil
+	}
+	return m.checkUpdate(true)
 }
 
 // firstRun guides a new installation: no server yet -> the Server window; not paired -> a hint.
@@ -304,6 +314,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case platformsMsg:
 		m.showPlatforms(msg)
+	case updateCheckMsg:
+		return m, m.onUpdateCheck(msg)
 	case fromJob:
 		cmd := m.onJob(msg)
 		if _, closed := msg.msg.(jobClosed); closed {

@@ -46,7 +46,7 @@ func (m *model) onJob(f fromJob) tea.Cmd {
 
 func (m *model) finishClock(r clockResult) tea.Cmd {
 	if r.ok {
-		return m.checkServer()
+		return tea.Batch(m.checkServer(), m.startUpdateCheck())
 	}
 	m.srv = srvStatus{state: "clock"}
 	m.confirm("Clock not set", []string{
