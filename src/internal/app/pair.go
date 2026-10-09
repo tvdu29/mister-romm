@@ -19,7 +19,9 @@ import (
 // browser (phone), and the device collects a token bound to it. Endpoints and answers were
 // checked against a RomM 5.3.1 server (its OpenAPI spec and real answers while pending).
 
-var wantedScopes = []string{"platforms.read", "roms.read", "collections.read"}
+// assets.* and devices.* are for the saves: reading and uploading them, and recording what this
+// device has synced.
+var wantedScopes = []string{"platforms.read", "roms.read", "collections.read", "assets.read", "assets.write", "devices.read", "devices.write"}
 
 type pairState struct {
 	deviceCode, userCode, url string
