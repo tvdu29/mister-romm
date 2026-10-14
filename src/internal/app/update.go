@@ -56,7 +56,10 @@ func (r release) asset(name string) (releaseAsset, bool) {
 // toolProgress rewrites the last line of the tool window (a percentage) instead of adding one.
 type toolProgress struct{ text string }
 
-type updateInfo struct{ rel release }
+type updateInfo struct {
+	rel    release
+	target string
+}
 
 type updateDone struct {
 	tag, staged string
@@ -118,6 +121,38 @@ func installedBinary(root string) string {
 	return filepath.Join(root, "Scripts", ".config", "romm", "bin", "romm-tui")
 }
 
+// updateTarget is the file to replace: the program installed on the card (the one romm.sh runs),
+// else on a PC the running program itself. A copy under /tmp is never a target.
+func updateTarget(root string) (string, error) {
+	p := installedBinary(root)
+	if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() {
+		return p, nil
+	}
+	exe, err := os.Executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(exe, filepath.Clean(os.TempDir())+string(filepath.Separator)) {
+		return "", fmt.Errorf("cannot find the installed program (%s)", p)
+	}
+	return exe, nil
+}
+
+// checkELF makes sure the file is a Linux program for this processor, before anything is run.
+func checkELF(head []byte) error {
+	if len(head) < 20 || string(head[:4]) != "\x7fELF" {
+		return errors.New("the downloaded file is not a Linux program")
+	}
+	want := map[string]uint16{"arm": 40, "amd64": 62, "arm64": 183, "386": 3}[runtime.GOARCH]
+	if got := uint16(head[18]) | uint16(head[19])<<8; want != 0 && got != want {
+		return fmt.Errorf("the downloaded program is for another processor (machine %d)", got)
+	}
+	return nil
+}
+
 // parseSums reads the output of sha256sum: "<hex>  <name>" per line.
 func parseSums(text string) map[string]string {
 	out := map[string]string{}
@@ -132,23 +167,30 @@ func parseSums(text string) map[string]string {
 
 // ------------------------------------------------------------------- network
 
-// plainClient talks to GitHub: no RomM token, redirects allowed (release files are served from
-// another host) but only over HTTPS.
-func (m *model) plainClient() *http.Client {
+// githubHost says whether a redirect may go there (the release files are served from another
+// GitHub host). It is a variable so that the tests can use a local server.
+var githubHost = func(host string) bool {
+	return host == "github.com" || host == "api.github.com" || strings.HasSuffix(host, ".githubusercontent.com")
+}
+
+// githubClient talks to GitHub: no RomM token, and certificates are ALWAYS verified, even when
+// the verification is turned off for the RomM server (a program to be run is fetched here).
+// Redirects stay on HTTPS and on GitHub hosts.
+func (m *model) githubClient() *http.Client {
 	pool, _ := m.caPool()
 	return &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return errors.New("too many redirects")
 			}
-			if req.URL.Scheme != "https" {
-				return fmt.Errorf("refusing a redirect to %s", req.URL.Scheme)
+			if req.URL.Scheme != "https" || !githubHost(req.URL.Hostname()) {
+				return fmt.Errorf("refusing a redirect to %s://%s", req.URL.Scheme, req.URL.Host)
 			}
 			return nil
 		},
 		Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
-			TLSClientConfig:       &tls.Config{RootCAs: pool, InsecureSkipVerify: m.insecure()},
+			TLSClientConfig:       &tls.Config{RootCAs: pool},
 			TLSHandshakeTimeout:   15 * time.Second,
 			ResponseHeaderTimeout: 45 * time.Second,
 			IdleConnTimeout:       30 * time.Second,
@@ -263,19 +305,16 @@ func (m *model) openUpdate() tea.Cmd {
 	case m.syncJob != nil || m.dlJob != nil:
 		m.message("Check for updates", []string{"A sync or a download is running.", "Wait for it to finish (or cancel it with c), then try again."})
 		return nil
-	case !strings.HasPrefix(version, "v"):
-		m.message("Check for updates", []string{"This is a development build (" + version + "):", "it cannot update itself."})
-		return nil
 	case binaryAsset() == "":
 		m.message("Check for updates", []string{"No release file exists for " + runtime.GOOS + "/" + runtime.GOARCH + "."})
 		return nil
 	}
-	if _, err := os.Stat(installedBinary(m.data.Root)); err != nil {
-		m.message("Check for updates", []string{"The installed program was not found:", installedBinary(m.data.Root), "",
-			"Only the copy installed on the SD card can update itself."})
+	target, err := updateTarget(m.data.Root)
+	if err != nil {
+		m.message("Check for updates", []string{err.Error(), "", "Only the copy installed on the SD card can update itself."})
 		return nil
 	}
-	c := m.plainClient()
+	c := m.githubClient()
 	m.pop = &popup{kind: "tool", title: "Check for updates", running: true}
 	j, cmd := startJob(func(ctx context.Context, send func(tea.Msg)) {
 		send(toolLine{"Installed version: " + version})
@@ -288,12 +327,13 @@ func (m *model) openUpdate() tea.Cmd {
 			return
 		}
 		send(toolLine{"Latest release:    " + rel.Tag})
-		if !newerVersion(version, rel.Tag) {
+		// a development build has no version to compare: the release is offered
+		if _, isRelease := parseVersion(version); isRelease && !newerVersion(version, rel.Tag) {
 			send(toolLine{""})
 			send(toolLine{"You are up to date."})
 			return
 		}
-		send(updateInfo{rel})
+		send(updateInfo{rel, target})
 	})
 	m.toolJob = j
 	return cmd
@@ -310,7 +350,7 @@ func (m *model) offerUpdate(u updateInfo) {
 	// the kept previous one
 	const margin = 4 << 20
 	tmpFree, okTmp := freeSpace(os.TempDir())
-	cardFree, okCard := freeSpace(filepath.Dir(installedBinary(m.data.Root)))
+	cardFree, okCard := freeSpace(filepath.Dir(u.target))
 	if okTmp && tmpFree < bin.Size+margin {
 		m.message("Not enough space", []string{"Not enough memory in " + os.TempDir() + ":", humanSize(tmpFree) + " free, " + humanSize(bin.Size+margin) + " needed."})
 		return
@@ -319,18 +359,22 @@ func (m *model) offerUpdate(u updateInfo) {
 		m.message("Not enough space", []string{"Not enough room on the card:", humanSize(cardFree) + " free, " + humanSize(2*bin.Size+margin) + " needed."})
 		return
 	}
+	from := version
+	if _, isRelease := parseVersion(version); !isRelease {
+		from = version + " (development build)"
+	}
 	lines := []string{
-		version + "  ->  " + u.rel.Tag, "",
+		from + "  ->  " + u.rel.Tag, "",
 		"Downloads " + humanSize(bin.Size) + ", verifies it, replaces the installed program",
 		"(the previous one is kept as romm-tui.old) and restarts.", ""}
 	if okCard && okTmp {
 		lines = append(lines, "Free space: card "+humanSize(cardFree)+", "+os.TempDir()+" "+humanSize(tmpFree), "")
 	}
-	m.confirm("Update available", append(lines, "Update now?"), func(m *model) tea.Cmd { return m.startUpdate(u.rel) })
+	m.confirm("Update available", append(lines, "Update now?"), func(m *model) tea.Cmd { return m.startUpdate(u.rel, u.target) })
 }
 
-func (m *model) startUpdate(rel release) tea.Cmd {
-	c, dest := m.plainClient(), installedBinary(m.data.Root)
+func (m *model) startUpdate(rel release, dest string) tea.Cmd {
+	c := m.githubClient()
 	m.pop = &popup{kind: "tool", title: "Updating to " + rel.Tag, running: true}
 	j, cmd := startJob(func(ctx context.Context, send func(tea.Msg)) {
 		line := func(s string) { send(toolLine{s}) }
@@ -390,6 +434,14 @@ func runUpdate(ctx context.Context, c *http.Client, rel release, dest string, li
 	}
 	if got != want {
 		return "", errors.New("checksum mismatch: the download is corrupted")
+	}
+	head := make([]byte, 20)
+	if hf, herr := os.Open(staged); herr == nil {
+		_, _ = io.ReadFull(hf, head)
+		hf.Close()
+	}
+	if err = checkELF(head); err != nil {
+		return "", err
 	}
 	if err = os.Chmod(staged, 0o700); err != nil {
 		return "", err

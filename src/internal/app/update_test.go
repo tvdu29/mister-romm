@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -106,5 +107,48 @@ func TestFetchReleaseAndDownload(t *testing.T) {
 	a.Size = int64(len(payload)) - 1 // the server sends more than announced
 	if _, err := downloadTo(ctx, srv.Client(), a, f, func(done, total int64) {}); err == nil {
 		t.Fatal("an overflow must be an error")
+	}
+}
+
+func fakeELF(extra string) []byte {
+	machine := map[string]byte{"arm": 40, "amd64": 62, "arm64": 183, "386": 3}[runtime.GOARCH]
+	h := make([]byte, 64)
+	copy(h, "\x7fELF")
+	h[18] = machine
+	return append(h, extra...)
+}
+
+func TestCheckELF(t *testing.T) {
+	if err := checkELF(fakeELF("x")); err != nil {
+		t.Error(err)
+	}
+	if checkELF([]byte("<html>not found</html>........")) == nil {
+		t.Error("an HTML page must be refused")
+	}
+	other := fakeELF("x")
+	other[18] = 99
+	if checkELF(other) == nil {
+		t.Error("a program for another processor must be refused")
+	}
+}
+
+func TestUpdateTargetPrefersTheInstalledProgram(t *testing.T) {
+	root := t.TempDir()
+	p := installedBinary(root)
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	_ = os.WriteFile(p, []byte("x"), 0o755)
+	if got, err := updateTarget(root); err != nil || got != p {
+		t.Errorf("updateTarget = %q, %v; want %q", got, err, p)
+	}
+}
+
+func TestGithubRedirectsStayOnGitHub(t *testing.T) {
+	for host, ok := range map[string]bool{
+		"github.com": true, "objects.githubusercontent.com": true, "release-assets.githubusercontent.com": true,
+		"evil.com": false, "githubusercontent.com.evil.com": false, "notgithub.com": false,
+	} {
+		if githubHost(host) != ok {
+			t.Errorf("githubHost(%q) = %v", host, !ok)
+		}
 	}
 }
