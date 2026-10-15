@@ -23,14 +23,14 @@ var embeddedCA []byte
 
 // env is a snapshot of everything a background job needs, so jobs never touch the model.
 type env struct {
-	base, token      string
-	insecure         bool
-	root, cfgDir     string
-	gamesDir         string
-	caFile, caSource string
-	mapping          map[string]string
-	client           *http.Client // with timeout, for API calls
-	longClient       *http.Client // without total timeout, for downloads
+	base, token  string
+	insecure     bool
+	root, cfgDir string
+	gamesDir     string
+	caSource     string
+	mapping      map[string]string
+	client       *http.Client // with timeout, for API calls
+	longClient   *http.Client // without total timeout, for downloads
 }
 
 func (m *model) cfgDir() string { return filepath.Join(m.data.Root, "Scripts", ".config", "romm") }
@@ -39,10 +39,57 @@ func (m *model) gamesDir() string {
 	return m.cfg("games_dir", filepath.Join(m.data.Root, "games"))
 }
 
-// caPool picks the certificate authorities used to verify the server, in this order: ca_file from
-// config.ini, a cacert.pem next to the settings, the one installed by the MiSTer Downloader, the
-// system one, then the bundle embedded in this program.
+// transports are shared by every request of the session. A Transport owns a pool of keep-alive
+// connections (two goroutines and the TLS state each) that lives 30 s after its last use: building
+// one per request, as env() used to, left dozens of idle connections alive after a few syncs and
+// reparsed the certificate bundle (about 1 MB of garbage) every time. Used from the UI goroutine only.
+type transports struct {
+	pool             *x509.CertPool
+	poolSrc, poolKey string
+	secure, insecure *http.Transport
+}
+
+// transport returns the shared transport that checks certificates, or the one that does not.
+func (m *model) transport(insecure bool) *http.Transport {
+	pool, _ := m.caPool()
+	tr := &m.tr.secure
+	if insecure {
+		tr = &m.tr.insecure
+	}
+	if *tr == nil {
+		*tr = &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSClientConfig:       &tls.Config{RootCAs: pool, InsecureSkipVerify: insecure},
+			TLSHandshakeTimeout:   15 * time.Second,
+			ResponseHeaderTimeout: 45 * time.Second,
+			IdleConnTimeout:       30 * time.Second,
+		}
+	}
+	return *tr
+}
+
+// caPool returns the certificate authorities used to verify the server. They are read once per
+// ca_file setting: reading and parsing a bundle takes about 1 ms on a PC, much more on a MiSTer.
 func (m *model) caPool() (*x509.CertPool, string) {
+	key := m.cfg("ca_file", "")
+	if m.tr.pool == nil || m.tr.poolKey != key {
+		m.tr.pool, m.tr.poolSrc = m.loadCAPool()
+		m.tr.poolKey = key
+		if m.tr.secure != nil { // built on the old pool: let its idle connections go
+			m.tr.secure.CloseIdleConnections()
+		}
+		if m.tr.insecure != nil {
+			m.tr.insecure.CloseIdleConnections()
+		}
+		m.tr.secure, m.tr.insecure = nil, nil
+	}
+	return m.tr.pool, m.tr.poolSrc
+}
+
+// loadCAPool picks the certificate authorities, in this order: ca_file from config.ini, a
+// cacert.pem next to the settings, the one installed by the MiSTer Downloader, the system one,
+// then the bundle embedded in this program.
+func (m *model) loadCAPool() (*x509.CertPool, string) {
 	cands := []string{m.cfg("ca_file", ""), filepath.Join(m.cfgDir(), "cacert.pem"),
 		filepath.Join(m.data.Root, "Scripts", ".config", "downloader", "cacert.pem"), "/etc/ssl/certs/cacert.pem",
 		"/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/cert.pem"}
@@ -65,15 +112,10 @@ func (m *model) caPool() (*x509.CertPool, string) {
 func (m *model) insecure() bool { return m.cfg("verify_tls", "1") == "0" || m.sessionInsecure }
 
 func (m *model) env() env {
-	pool, src := m.caPool()
+	_, src := m.caPool()
+	tr := m.transport(m.insecure())
 	mk := func(timeout time.Duration) *http.Client {
-		return &http.Client{Timeout: timeout, CheckRedirect: sameHostRedirect, Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			TLSClientConfig:       &tls.Config{RootCAs: pool, InsecureSkipVerify: m.insecure()},
-			TLSHandshakeTimeout:   15 * time.Second,
-			ResponseHeaderTimeout: 45 * time.Second,
-			IdleConnTimeout:       30 * time.Second,
-		}}
+		return &http.Client{Timeout: timeout, CheckRedirect: sameHostRedirect, Transport: tr}
 	}
 	mapping := loadMapping(m.cfgDir())
 	return env{base: m.cfg("server_url", ""), token: m.data.Token, insecure: m.insecure(), root: m.data.Root,

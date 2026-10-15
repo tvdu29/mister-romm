@@ -38,6 +38,7 @@ type popup struct {
 type model struct {
 	data *Data
 	th   Theme
+	tr   transports // shared HTTP transports and certificate pool
 
 	// styles are built once: creating them per row is needless work on a 800 MHz Cortex-A9
 	sSel, sDim, sNorm, sBad lipgloss.Style
