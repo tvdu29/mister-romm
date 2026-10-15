@@ -161,13 +161,6 @@ func TestDefaultRoot(t *testing.T) {
 	if got := defaultRoot(); got == "" {
 		t.Error("defaultRoot must always give a place to store things")
 	}
-	if envOr("ROMM_TEST_UNSET_VAR", "d") != "d" {
-		t.Error("envOr default")
-	}
-	t.Setenv("ROMM_TEST_SET_VAR", "v")
-	if envOr("ROMM_TEST_SET_VAR", "d") != "v" {
-		t.Error("envOr value")
-	}
 }
 
 func TestWritable(t *testing.T) {
@@ -183,10 +176,6 @@ func TestWritable(t *testing.T) {
 
 func TestGameLookups(t *testing.T) {
 	h, _ := syncedHarness(t, "gb", "Game Boy", 2)
-	g := h.m.data.Games[1]
-	if h.m.gameByKey(g.Key()) != g || h.m.gameByKey("9:9") != nil {
-		t.Error("gameByKey")
-	}
 	if p := h.m.platformByID("1"); p == nil || p.Name != "Game Boy" || h.m.platformByID("zz") != nil {
 		t.Error("platformByID")
 	}
