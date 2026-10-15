@@ -28,10 +28,12 @@ import (
 // the installed binary to /tmp and runs it, so the installed file can be replaced while running.
 
 const (
-	releaseURL   = "https://api.github.com/repos/tvdu29/mister-romm/releases/latest"
 	maxBinary    = 64 << 20
 	tmpBinPrefix = "romm-tui." // copies made by romm.sh (romm-tui.XXXXXX) and by the updater
 )
+
+// releaseURL is a variable only so that the tests can use a local server.
+var releaseURL = "https://api.github.com/repos/tvdu29/mister-romm/releases/latest"
 
 type releaseAsset struct {
 	Name string `json:"name"`
@@ -400,12 +402,12 @@ func runUpdate(ctx context.Context, c *http.Client, rel release, dest string, li
 	if err != nil {
 		return "", err
 	}
-	staged = f.Name()
+	path := f.Name()
+	staged = path
 	defer func() {
 		f.Close()
 		if err != nil {
-			_ = os.Remove(staged)
-			staged = ""
+			_ = os.Remove(path) // not staged: a "return "", err" has already cleared the result
 		}
 	}()
 
@@ -436,19 +438,19 @@ func runUpdate(ctx context.Context, c *http.Client, rel release, dest string, li
 		return "", errors.New("checksum mismatch: the download is corrupted")
 	}
 	head := make([]byte, 20)
-	if hf, herr := os.Open(staged); herr == nil {
+	if hf, herr := os.Open(path); herr == nil {
 		_, _ = io.ReadFull(hf, head)
 		hf.Close()
 	}
 	if err = checkELF(head); err != nil {
 		return "", err
 	}
-	if err = os.Chmod(staged, 0o700); err != nil {
+	if err = os.Chmod(path, 0o700); err != nil {
 		return "", err
 	}
 	vctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(vctx, staged, "-version").Output()
+	out, err := exec.CommandContext(vctx, path, "-version").Output()
 	if err != nil {
 		return "", fmt.Errorf("the new program does not start: %v", err)
 	}
@@ -457,7 +459,7 @@ func runUpdate(ctx context.Context, c *http.Client, rel release, dest string, li
 	}
 
 	line("Installing ...")
-	if err = installBinary(staged, dest); err != nil {
+	if err = installBinary(path, dest); err != nil {
 		return "", err
 	}
 	line("Installed " + rel.Tag + ".")
