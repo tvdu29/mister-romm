@@ -88,10 +88,3 @@ func writable(dir string) bool {
 	f.Close()
 	return os.Remove(name) == nil
 }
-
-func envOr(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return d
-}

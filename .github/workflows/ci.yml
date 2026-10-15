@@ -1,0 +1,110 @@
+name: ci
+
+# Every pull request, and every push to the default branch, must pass the checks below.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: format, vet, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Formatting
+        run: |
+          test -z "$(gofmt -l .)" || { echo "::error::gofmt needed on:"; gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Tests (race detector, coverage)
+        run: go test -race -count=1 -timeout 10m -covermode=atomic -coverprofile=cover.out ./...
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f cover.out ]; then
+            {
+              echo "### Coverage"
+              echo '```'
+              go tool cover -func=cover.out | tail -n 1
+              echo '```'
+              echo "<details><summary>Least covered functions</summary>"
+              echo
+              echo '```'
+              go tool cover -func=cover.out | sort -k3 -n | head -25
+              echo '```'
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: cover.out
+          if-no-files-found: ignore
+
+  build:
+    name: cross-build for the MiSTer and a PC
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build ARMv7 (MiSTer) and amd64
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o /tmp/romm-tui-armv7 ./src/cmd/romm-tui
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /tmp/romm-tui-amd64 ./src/cmd/romm-tui
+          file /tmp/romm-tui-armv7 | tee /dev/stderr | grep -q "ARM" || { echo "::error::the MiSTer binary is not an ARM executable"; exit 1; }
+          file /tmp/romm-tui-armv7 | grep -q "statically linked" || { echo "::error::the MiSTer binary must be static"; exit 1; }
+          ls -l /tmp/romm-tui-*
+
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history: a secret removed by a later commit is still published
+
+      # The binary is pinned by version and by checksum: nothing from a third-party action runs here.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+
+      - name: Scan the history and the working tree
+        run: |
+          set -euo pipefail
+          /tmp/gitleaks git --config .gitleaks.toml --redact -v --exit-code 1 .
+          /tmp/gitleaks dir --config .gitleaks.toml --redact -v --exit-code 1 .
