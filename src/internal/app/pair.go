@@ -230,8 +230,7 @@ func (m *model) handlePair(msg tea.Msg) (tea.Cmd, bool) {
 				m.message("Pairing refused", []string{err.Error(), "", "Nothing was saved."})
 				return nil, true
 			}
-			m.message("Paired", []string{"This device is now connected to RomM.", "Permissions: " + strings.Join(msg.scopes, " "), "", "Next: press p to choose the platforms to index,", "then s to download their game list."})
-			return m.checkServer(), true
+			return m.paired(msg.scopes), true
 		case "slow":
 			m.pair.interval += 5 * time.Second
 		case "neterr":
@@ -254,10 +253,19 @@ func (m *model) handlePair(msg tea.Msg) (tea.Cmd, bool) {
 			m.message("Pairing refused", []string{err.Error(), "", "Nothing was saved."})
 			return nil, true
 		}
-		m.message("Paired", []string{"This device is now connected to RomM.", "Permissions: " + strings.Join(msg.scopes, " "), "", "Next: press p to choose the platforms to index,", "then s to download their game list."})
-		return m.checkServer(), true
+		return m.paired(msg.scopes), true
 	}
 	return nil, false
+}
+
+// paired runs after a successful pairing: with no platform indexed yet, the platform picker opens
+// straight away (Enter there starts the sync), otherwise a short confirmation is shown.
+func (m *model) paired(scopes []string) tea.Cmd {
+	if len(readSelection(m.cfgDir())) == 0 {
+		return tea.Batch(m.checkServer(), m.openPlatforms())
+	}
+	m.message("Paired", []string{"This device is now connected to RomM.", "Permissions: " + strings.Join(scopes, " ")})
+	return m.checkServer()
 }
 
 func (m *model) pairingLines() []string {

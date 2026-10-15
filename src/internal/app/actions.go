@@ -55,7 +55,7 @@ func (m *model) startSyncFor(sel map[string]*selPlatform, full, quiet bool) tea.
 		return nil
 	}
 	e := m.env()
-	m.syncQuiet, m.syncText = quiet, "Indexing..."
+	m.syncText = "Indexing..."
 	j, cmd := startJob(func(ctx context.Context, send func(tea.Msg)) { runSync(ctx, e, sel, full, send) })
 	m.syncJob = j
 	return cmd
@@ -81,14 +81,10 @@ func (m *model) finishSync(d syncDone) tea.Cmd {
 	m.noteErr("selection.json", writeSelection(m.cfgDir(), sel))
 	m.set("catalog_synced", fmt.Sprintf("%d", time.Now().Unix()))
 	m.reloadCatalog()
+	m.toast = fmt.Sprintf("Catalog up to date: %d games (%+d)", d.total, d.added)
 	if d.unsafe > 0 {
 		logError(m.cfgDir(), fmt.Sprintf("sync: %d game(s) refused because of an unsafe file name", d.unsafe))
-		m.toast = fmt.Sprintf("%d game(s) were refused: unsafe file name sent by the server", d.unsafe)
-	}
-	if m.syncQuiet {
-		m.toast = fmt.Sprintf("Catalog up to date: %d games (%+d)", d.total, d.added)
-	} else {
-		m.message("Catalog updated", []string{fmt.Sprintf("Games indexed: %d (%+d)", d.total, d.added)})
+		m.toast += fmt.Sprintf(" - %d refused: unsafe file name sent by the server", d.unsafe)
 	}
 	return nil
 }
