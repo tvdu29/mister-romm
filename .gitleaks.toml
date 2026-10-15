@@ -1,0 +1,13 @@
+# gitleaks configuration: the default rules, plus the exceptions below.
+title = "mister-romm"
+
+[extend]
+useDefault = true
+
+# The fake RomM server of the tests hands out a made-up token. It is not a credential, and it is
+# only ignored when it appears in a test file: the same text anywhere else is still reported.
+[[allowlists]]
+description = "fake token of the test server"
+condition = "AND"
+paths = ['''src/internal/app/[a-z0-9_]+_test\.go$''']
+regexes = ['''tok-0123456789abcdef''']
