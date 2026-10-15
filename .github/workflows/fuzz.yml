@@ -1,0 +1,46 @@
+name: fuzz
+
+# The fuzz targets also run as plain tests in ci; this explores further, every week and on demand.
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds per target"
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fuzz every target
+        run: |
+          set -u
+          SECONDS_EACH="${{ github.event.inputs.seconds || '60' }}"
+          fail=0
+          for f in $(grep -ho '^func Fuzz[A-Za-z0-9_]*' src/internal/app/*_test.go | sed 's/func //'); do
+            echo "::group::$f"
+            go test ./src/internal/app -run '^$' -fuzz "^$f\$" -fuzztime "${SECONDS_EACH}s" || fail=1
+            echo "::endgroup::"
+          done
+          exit $fail
+
+      - name: Keep the inputs that made a target fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failures
+          path: src/internal/app/testdata/fuzz
+          if-no-files-found: ignore
