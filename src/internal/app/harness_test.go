@@ -50,12 +50,13 @@ type fakeRomm struct {
 	platforms []*fakePlatform
 	reqs      []string // "METHOD /path?query" of every request, in order
 
-	romsBody  string        // when set, the game list answers with this raw text (malformed JSON tests)
-	pageDelay time.Duration // delay before answering a game list page (cancellation tests)
-	fault     string        // content fault: "", "ignore-range", "cut:N", "bad-range", "500", "404"
-	faultOnce bool          // the fault only applies to the first content request
-	contentN  int           // content requests seen
-	ranges    []string      // Range header of every content request
+	romsBody     string        // when set, the game list answers with this raw text (malformed JSON tests)
+	contentDelay time.Duration // delay before a download starts (cancellation tests)
+	pageDelay    time.Duration // delay before answering a game list page (cancellation tests)
+	fault        string        // content fault: "", "ignore-range", "cut:N", "bad-range", "500", "404"
+	faultOnce    bool          // the fault only applies to the first content request
+	contentN     int           // content requests seen
+	ranges       []string      // Range header of every content request
 
 	pollReplies []string // answers of the pairing token endpoint, one per poll: pending slow denied ok
 	pollN       int
@@ -226,6 +227,13 @@ func (r *fakeRomm) serveContent(w http.ResponseWriter, req *http.Request) {
 	if game == nil {
 		http.NotFound(w, req)
 		return
+	}
+	if r.contentDelay > 0 {
+		select {
+		case <-time.After(r.contentDelay):
+		case <-req.Context().Done():
+			return
+		}
 	}
 	switch {
 	case fault == "500":
