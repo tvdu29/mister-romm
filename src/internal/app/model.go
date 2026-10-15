@@ -33,6 +33,7 @@ type popup struct {
 
 	chk     []chkItem // checklist: items with a tick
 	running bool      // tool: still working
+	prog    bool      // tool: the last line is a progress line, to be rewritten
 }
 
 type model struct {
@@ -66,6 +67,7 @@ type model struct {
 	syncJob, dlJob  *job
 	toolJob         *job
 	clockJob        *job
+	relaunch        string // set by a finished update: Run restarts into this program
 	syncText        string
 	dlBatch         []*dl
 	autosyncDone    bool

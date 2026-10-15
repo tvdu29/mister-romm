@@ -21,9 +21,22 @@ func (m *model) onJob(f fromJob) tea.Cmd {
 	case toolLine:
 		if m.pop != nil && m.pop.kind == "tool" {
 			m.pop.lines = append(m.pop.lines, x.text)
+			m.pop.prog = false
+		}
+	case toolProgress:
+		if p := m.pop; p != nil && p.kind == "tool" {
+			if p.prog && len(p.lines) > 0 {
+				p.lines[len(p.lines)-1] = x.text
+			} else {
+				p.lines, p.prog = append(p.lines, x.text), true
+			}
 		}
 	case clockResult:
 		return m.finishClock(x)
+	case updateInfo:
+		m.offerUpdate(x)
+	case updateDone:
+		return m.finishUpdate(x)
 	case jobClosed:
 		switch f.j {
 		case m.syncJob:

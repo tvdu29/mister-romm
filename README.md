@@ -20,6 +20,7 @@ lives on a home server and the MiSTer should simply fetch what you want to play.
 - **Downloads** with resume, size and sha1 verification, free-space check and cancellation
 - **Management**: delete the games you downloaded, choose the destination folder of each platform
 - **Tools**: diagnostics, speed test, automatic clock setting (`ntpd`) and built-in HTTPS certificates, which matter on a MiSTer without a battery-backed clock
+- **Self-update**: Settings > Check for updates downloads the latest release, verifies its checksum, replaces the program and restarts it
 - A single **static** binary (ARMv7), nothing to install on the MiSTer
 
 Save games are not handled, only the game library.
