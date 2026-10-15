@@ -39,7 +39,8 @@ func TestNewerVersion(t *testing.T) {
 
 func TestParseSums(t *testing.T) {
 	h := strings.Repeat("ab", 32)
-	got := parseSums(h + "  romm-tui-linux-armv7\n" + strings.ToUpper(h) + " *other\nnot a sum line\nshort  x\n")
+	notHex := strings.Repeat("ab", 31) + "zz"
+	got := parseSums(h + "  romm-tui-linux-armv7\n" + strings.ToUpper(h) + " *other\nnot a sum line\nshort  x\n" + notHex + "  bad\n")
 	if got["romm-tui-linux-armv7"] != h || got["other"] != h || len(got) != 2 {
 		t.Fatalf("parseSums = %v", got)
 	}

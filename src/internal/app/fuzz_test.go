@@ -62,7 +62,7 @@ func FuzzWithin(f *testing.F) {
 			return
 		}
 		rel, err := filepath.Rel(filepath.Clean(base), filepath.Clean(p))
-		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 			t.Fatalf("within(%q, %q) is true but the relative path is %q", base, p, rel)
 		}
 	})
@@ -135,8 +135,8 @@ func FuzzDetail(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
-		if got := detail(s); len(got) > 400 {
-			t.Fatalf("detail returned %d characters", len(got))
+		if got := detail(s); len([]rune(got)) > 303 {
+			t.Fatalf("detail returned %d characters", len([]rune(got)))
 		}
 	})
 }
