@@ -160,9 +160,13 @@ func parseSums(text string) map[string]string {
 	out := map[string]string{}
 	for _, l := range strings.Split(text, "\n") {
 		f := strings.Fields(l)
-		if len(f) == 2 && len(f[0]) == sha256.Size*2 {
-			out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
+		if len(f) != 2 || len(f[0]) != sha256.Size*2 {
+			continue
 		}
+		if _, err := hex.DecodeString(f[0]); err != nil {
+			continue // not a hash
+		}
+		out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
 	}
 	return out
 }
