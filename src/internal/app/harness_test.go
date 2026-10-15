@@ -373,6 +373,8 @@ func (h *harness) pump(cmd tea.Cmd) {
 			queue = append(queue, x...)
 		case tea.QuitMsg:
 			h.quit = true
+		case pairTickMsg:
+			// the pairing clock ticks forever: the tests that care drive it by hand
 		default:
 			_, next := h.m.Update(msg)
 			queue = append(queue, next)
