@@ -21,15 +21,6 @@ func (m *model) reloadCatalog() {
 	m.refilter()
 }
 
-func (m *model) gameByKey(key string) *Game {
-	for _, g := range m.data.Games {
-		if g.Key() == key {
-			return g
-		}
-	}
-	return nil
-}
-
 func (m *model) platformByID(id string) *Platform {
 	for _, p := range m.data.Platforms {
 		if p.ID == id {

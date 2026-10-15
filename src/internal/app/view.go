@@ -532,9 +532,7 @@ func (m *model) renderPopup() string {
 		}
 		lines = append(lines, "", m.dimStyle().Render(" Enter: change   Esc: close"))
 	case "pairing":
-		for _, l := range m.pairingLines() {
-			lines = append(lines, l)
-		}
+		lines = append(lines, m.pairingLines()...)
 	case "tool":
 		rows := m.h - 8
 		src := p.lines
