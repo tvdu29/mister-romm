@@ -87,14 +87,22 @@ func postJSON(c *http.Client, url string, in any, out any) (int, string, error) 
 	return resp.StatusCode, string(raw), nil
 }
 
+// detail is the message of an error answer, cleaned and short enough to show: a server could
+// send a megabyte of it.
 func detail(raw string) string {
 	var d struct {
 		Detail any `json:"detail"`
 	}
+	s := ""
 	if json.Unmarshal([]byte(raw), &d) == nil && d.Detail != nil {
-		return clean(fmt.Sprint(d.Detail))
+		s = clean(fmt.Sprint(d.Detail))
+	} else {
+		s = clean(strings.TrimSpace(raw))
 	}
-	return clean(strings.TrimSpace(raw))
+	if r := []rune(s); len(r) > 300 {
+		s = string(r[:300]) + "..."
+	}
+	return s
 }
 
 func (m *model) saveCredentials(token, deviceID string, scopes []string) error {

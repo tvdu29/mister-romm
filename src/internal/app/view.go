@@ -101,6 +101,9 @@ func (m *model) box(title string, lines []string, w, h int, focused bool, kind s
 		if i < len(lines) {
 			line = lines[i]
 		}
+		if width(line) > iw { // a longer line would push the border out and wrap on a small console
+			line = ansi.Truncate(line, iw, "")
+		}
 		out = append(out, bs.Render(b[5])+padRight(line, iw)+bs.Render(b[5]))
 	}
 	out = append(out, bs.Render(b[2]+strings.Repeat(b[4], iw)+b[3]))

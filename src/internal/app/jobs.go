@@ -26,6 +26,14 @@ func startJob(run func(ctx context.Context, send func(tea.Msg))) (*job, tea.Cmd)
 	go func() {
 		defer close(j.ch)
 		run(ctx, func(msg tea.Msg) {
+			// deliver first: once the job is cancelled both cases of the select below can be
+			// ready, and Go would pick one at random, losing the final message of a cancelled sync
+			// or download (and leaving "Cancelling..." on screen)
+			select {
+			case j.ch <- msg:
+				return
+			default:
+			}
 			select {
 			case j.ch <- msg:
 			case <-ctx.Done():
