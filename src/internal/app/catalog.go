@@ -66,22 +66,35 @@ func readCatalog(path string) map[string]catRow {
 }
 
 func writeCatalog(path string, rows map[string]catRow) error {
-	list := make([]catRow, 0, len(rows))
+	// the lower-case sort key is computed once per row: doing it inside the comparison allocated
+	// two strings per comparison (1.4 million allocations for 40 000 games)
+	type keyed struct {
+		row catRow
+		low string
+	}
+	list := make([]keyed, 0, len(rows))
 	for _, r := range rows {
-		list = append(list, r)
+		list = append(list, keyed{r, strings.ToLower(r.name)})
 	}
 	sort.Slice(list, func(i, j int) bool {
-		a, b := strings.ToLower(list[i].name), strings.ToLower(list[j].name)
-		if a != b {
-			return a < b
+		if list[i].low != list[j].low {
+			return list[i].low < list[j].low
 		}
-		return list[i].id < list[j].id
+		return list[i].row.id < list[j].row.id
 	})
-	var sb strings.Builder
-	for _, r := range list {
-		sb.WriteString(r.id + "\x1f" + r.name + "\x1f" + strconv.FormatInt(r.size, 10) + "\x1f" + r.sha1 + "\n")
+	buf := make([]byte, 0, len(list)*80)
+	for _, k := range list {
+		r := k.row
+		buf = append(buf, r.id...)
+		buf = append(buf, 0x1f)
+		buf = append(buf, r.name...)
+		buf = append(buf, 0x1f)
+		buf = strconv.AppendInt(buf, r.size, 10)
+		buf = append(buf, 0x1f)
+		buf = append(buf, r.sha1...)
+		buf = append(buf, '\n')
 	}
-	return writeFileAtomic(path, []byte(sb.String()), 0o644)
+	return writeFileAtomic(path, buf, 0o644)
 }
 
 // fetchPlatforms lists every platform of the server.
@@ -195,10 +208,8 @@ func runSync(ctx context.Context, e env, plats map[string]*selPlatform, full boo
 			return
 		}
 		done.added += len(rows) - before
+		done.total += len(rows) // what was just written: no need to read every catalog again
 		done.synced[pid] = start
-	}
-	for _, pid := range sortedKeys(plats) {
-		done.total += len(readCatalog(catalogPath(e.cfgDir, pid)))
 	}
 	send(done)
 }
