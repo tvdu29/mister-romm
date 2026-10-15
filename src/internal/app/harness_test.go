@@ -71,6 +71,13 @@ func newFakeRomm(t *testing.T) *fakeRomm {
 
 func (r *fakeRomm) URL() string { return r.srv.URL }
 
+// set changes the knobs while requests may be in flight (cancellation tests).
+func (r *fakeRomm) set(f func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f()
+}
+
 // addPlatform adds a platform with n games named "<Name> NNN.gb" of 1000+i bytes.
 func (r *fakeRomm) addPlatform(id int, slug, name string, n int) *fakePlatform {
 	p := &fakePlatform{id: id, slug: slug, name: name}
@@ -166,11 +173,18 @@ func (r *fakeRomm) serve(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *fakeRomm) serveRoms(w http.ResponseWriter, req *http.Request) {
-	if r.pageDelay > 0 {
-		time.Sleep(r.pageDelay)
+	r.mu.Lock()
+	body, delay := r.romsBody, r.pageDelay
+	r.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-req.Context().Done():
+			return
+		}
 	}
-	if r.romsBody != "" {
-		_, _ = w.Write([]byte(r.romsBody))
+	if body != "" {
+		_, _ = w.Write([]byte(body))
 		return
 	}
 	q := req.URL.Query()
@@ -219,7 +233,7 @@ func (r *fakeRomm) serveContent(w http.ResponseWriter, req *http.Request) {
 	r.contentN++
 	n := r.contentN
 	r.ranges = append(r.ranges, req.Header.Get("Range"))
-	fault := r.fault
+	fault, delay := r.fault, r.contentDelay
 	if r.faultOnce && n > 1 {
 		fault = ""
 	}
@@ -228,9 +242,9 @@ func (r *fakeRomm) serveContent(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
-	if r.contentDelay > 0 {
+	if delay > 0 {
 		select {
-		case <-time.After(r.contentDelay):
+		case <-time.After(delay):
 		case <-req.Context().Done():
 			return
 		}

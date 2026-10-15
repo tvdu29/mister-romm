@@ -327,7 +327,7 @@ func TestGitHubClientNeverSkipsCertificateChecks(t *testing.T) {
 }
 
 func TestGitHubRateLimitIsExplained(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "rate limit", 403) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "rate limit", http.StatusForbidden) }))
 	defer srv.Close()
 	_, err := fetchRelease(context.Background(), srv.Client(), srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "rate limit") {
